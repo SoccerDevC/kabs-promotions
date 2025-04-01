@@ -101,20 +101,7 @@ const HomeScreen = () => {
         lastPlayed: "2 hours ago",
         logo: "https://img.icons8.com/color/96/000000/radio.png",
       },
-      {
-        id: "2",
-        name: "Kabs Hits",
-        genre: "Pop",
-        lastPlayed: "Yesterday",
-        logo: "https://img.icons8.com/color/96/000000/musical-notes.png",
-      },
-      {
-        id: "3",
-        name: "Kabs Jazz",
-        genre: "Jazz",
-        lastPlayed: "3 days ago",
-        logo: "https://img.icons8.com/color/96/000000/saxophone.png",
-      },
+    
     ])
 
     // Mock recent TV channels

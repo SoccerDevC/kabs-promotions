@@ -15,6 +15,7 @@ import {
   StatusBar,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from "react-native"
 import { Audio } from "expo-av"
 import { LinearGradient } from "expo-linear-gradient"
@@ -41,12 +42,12 @@ const radioStations: RadioStation[] = [
     streamUrl: "http://s44.myradiostream.com:8138/;",
     imageUrl: "https://cdn-icons-png.flaticon.com/512/1251/1251671.png",
   },
-  {
-    id: "station3",
-    name: "Radio City",
-    streamUrl: "https://cast1.my-control-panel.com/proxy/richar16/stream",
-    imageUrl: "https://cdn-icons-png.flaticon.com/512/1251/1251671.png",
-  },
+  // {
+  //   id: "station3",
+  //   name: "Radio City",
+  //   streamUrl: "https://cast1.my-control-panel.com/proxy/richar16/stream",
+  //   imageUrl: "https://cdn-icons-png.flaticon.com/512/1251/1251671.png",
+  // },
   {
     id: "station4",
     name: "Galaxy Fm",
@@ -81,18 +82,6 @@ const radioStations: RadioStation[] = [
     id: "station9",
     name: "Capital Fm Ug",
     streamUrl: "https://capitalfm.cloudrad.io/stream/1/",
-    imageUrl: "https://cdn-icons-png.flaticon.com/512/1251/1251671.png",
-  },
-  {
-    id: "station10",
-    name: "Smooth Radio",
-    streamUrl: "https://media-ice.musicradio.com/SmoothUK",
-    imageUrl: "https://cdn-icons-png.flaticon.com/512/1251/1251671.png",
-  },
-  {
-    id: "station11",
-    name: "Capital FM",
-    streamUrl: "https://media-ice.musicradio.com/CapitalUK",
     imageUrl: "https://cdn-icons-png.flaticon.com/512/1251/1251671.png",
   },
   {
@@ -138,6 +127,7 @@ export default function RadioScreen() {
   const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState<string | null>(null)
   const [sound, setSound] = useState<Audio.Sound | null>(null)
+  const [errorStations, setErrorStations] = useState<Set<string>>(new Set())
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current
@@ -150,7 +140,7 @@ export default function RadioScreen() {
         // Configure audio to play in background
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
-          staysActiveInBackground: true, // This is the correct place for this property
+          staysActiveInBackground: true,
           playsInSilentModeIOS: true,
           shouldDuckAndroid: true,
           playThroughEarpieceAndroid: false,
@@ -192,11 +182,27 @@ export default function RadioScreen() {
 
     // Clean up sound on unmount
     return () => {
-      if (sound) {
-        sound.unloadAsync()
-      }
+      cleanupSound()
     }
   }, [])
+
+  // Safe cleanup function for sound
+  const cleanupSound = async () => {
+    if (sound) {
+      try {
+        const status = await sound.getStatusAsync()
+        if (status.isLoaded) {
+          await sound.stopAsync()
+          await sound.unloadAsync()
+        }
+      } catch (error) {
+        console.error("Error cleaning up sound:", error)
+      } finally {
+        setSound(null)
+        setCurrentlyPlaying(null)
+      }
+    }
+  }
 
   // Interpolate color for animation
   const titleColor = colorShift.interpolate({
@@ -209,32 +215,49 @@ export default function RadioScreen() {
     try {
       // If this station is already playing, pause it
       if (currentlyPlaying === stationId) {
-        if (sound) {
-          await sound.pauseAsync()
-          setCurrentlyPlaying(null)
-        }
+        await cleanupSound()
         return
       }
 
       // Set loading state
       setIsLoading(stationId)
 
-      // If another station is playing, stop it
-      if (sound) {
-        await sound.unloadAsync()
-      }
+      // Clean up any existing sound
+      await cleanupSound()
 
-      // Create and play new sound - removed staysActiveInBackground from here
-      const { sound: newSound } = await Audio.Sound.createAsync({ uri: streamUrl }, { shouldPlay: true })
+      // Create new sound but don't play automatically
+      const { sound: newSound } = await Audio.Sound.createAsync({ uri: streamUrl }, { shouldPlay: false }, (status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          cleanupSound()
+        }
+      })
+
+      // Now explicitly play the sound
+      await newSound.playAsync()
 
       setSound(newSound)
       setCurrentlyPlaying(stationId)
-      setIsLoading(null)
+
+      // Remove this station from error list if it was there
+      if (errorStations.has(stationId)) {
+        const newErrorStations = new Set(errorStations)
+        newErrorStations.delete(stationId)
+        setErrorStations(newErrorStations)
+      }
     } catch (error) {
       console.error("Error playing audio:", error)
-      setIsLoading(null)
 
-      // Show error alert or toast here if needed
+      // Add this station to error list
+      setErrorStations(new Set(errorStations).add(stationId))
+
+      // Show error message to user
+      Alert.alert(
+        "Playback Error",
+        `Unable to play ${radioStations.find((s) => s.id === stationId)?.name}. The station may be unavailable.`,
+        [{ text: "OK" }],
+      )
+    } finally {
+      setIsLoading(null)
     }
   }
 
@@ -242,6 +265,7 @@ export default function RadioScreen() {
   const RadioStationCard = ({ station }: { station: RadioStation }) => {
     const isPlaying = currentlyPlaying === station.id
     const isStationLoading = isLoading === station.id
+    const hasError = errorStations.has(station.id)
 
     // Card animation
     const cardScale = useRef(new Animated.Value(1)).current
@@ -263,11 +287,11 @@ export default function RadioScreen() {
     }
 
     return (
-      <Animated.View style={[styles.stationCard, { transform: [{ scale: cardScale }] }]}>
+      <Animated.View style={[styles.stationCard, { transform: [{ scale: cardScale }] }, hasError && styles.errorCard]}>
         <Image source={{ uri: station.imageUrl }} style={styles.stationIcon} />
         <Text style={styles.stationName}>{station.name}</Text>
         <TouchableOpacity
-          style={styles.playButton}
+          style={[styles.playButton, hasError && styles.errorButton]}
           onPress={() => togglePlay(station.id, station.streamUrl)}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
@@ -276,7 +300,7 @@ export default function RadioScreen() {
           {isStationLoading ? (
             <ActivityIndicator color="#8B0000" size="small" />
           ) : (
-            <Text style={styles.playButtonText}>{isPlaying ? "Pause" : "Play"}</Text>
+            <Text style={styles.playButtonText}>{hasError ? "Retry" : isPlaying ? "Pause" : "Play"}</Text>
           )}
         </TouchableOpacity>
       </Animated.View>
@@ -317,13 +341,13 @@ export default function RadioScreen() {
     </SafeAreaView>
   )
 }
-const { width } = Dimensions.get("window");
-const cardWidth = (width - 48) / 2; // Two cards per row with padding
+const { width } = Dimensions.get("window")
+const cardWidth = (width - 48) / 2 // Two cards per row with padding
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop:20,
+    paddingTop: 20,
     backgroundColor: "#8B0000",
   },
   backgroundGradient: {
@@ -353,7 +377,7 @@ const styles = StyleSheet.create({
   },
   stationsGrid: {
     flexDirection: "row", // Arrange cards in rows
-    flexWrap: "wrap",     // Wrap cards to the next row
+    flexWrap: "wrap", // Wrap cards to the next row
     justifyContent: "space-between", // Add space between cards
     paddingHorizontal: 16, // Add horizontal padding for spacing
     marginBottom: 20,
@@ -376,6 +400,9 @@ const styles = StyleSheet.create({
         elevation: 6,
       },
     }),
+  },
+  errorCard: {
+    backgroundColor: "rgba(255, 200, 200, 0.2)",
   },
   stationIcon: {
     width: 60,
@@ -400,6 +427,9 @@ const styles = StyleSheet.create({
     minWidth: 100,
     alignItems: "center",
   },
+  errorButton: {
+    backgroundColor: "#FF9999",
+  },
   playButtonText: {
     color: "#8B0000",
     fontSize: 16,
@@ -415,4 +445,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 14,
   },
-});
+})
+

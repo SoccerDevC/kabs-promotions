@@ -14,6 +14,7 @@ import {
   Modal,
   StatusBar,
   Platform,
+  Alert,
 } from "react-native"
 import { WebView } from "react-native-webview"
 import { Feather } from "@expo/vector-icons"
@@ -37,88 +38,11 @@ const tvChannels: Channel[] = [
     embedUrl: "https://stream.howto.co.ug/hls.html?rel=0&showinfo=0",
     logo: "https://via.placeholder.com/100x50",
   },
-//   {
-//     id: "galaxy-tv",
-//     name: "Galaxy TV",
-//     category: "News",
-//     embedUrl: "https://player.castr.io/live_43351ad0f3b411ed81c78fcc31887c54?autoplay=1",
-//     logo: "https://via.placeholder.com/100x50?text=Galaxy+TV",
-// },
-  {
-    id: "bukedde",
-    name: "Bukedde Tv Uganda",
-    category: "News",
-    embedUrl: "https://www.bukedde.co.ug/tv/4",
-    logo: "https://via.placeholder.com/100x50",
-  },
-  {
-    id: "dw-news",
-    name: "DW News",
-    category: "News",
-    embedUrl: "https://www.youtube.com/embed/live_stream?channel=UCknLrEdhRCp1aegoMqRaCZg&autoplay=1",
-    logo: "https://via.placeholder.com/100x50",
-  },
-  {
-    id: "citizen-tv",
-    name: "Citizen TV Kenya",
-    category: "News",
-    embedUrl: "https://www.youtube.com/embed/live_stream?channel=UChBQgieUidXV1CmDxSdRm3g&autoplay=1",
-    logo: "https://via.placeholder.com/100x50",
-  },
   {
     id: "al-jazeera",
     name: "Al Jazeera English",
     category: "News",
     embedUrl: "https://www.youtube.com/embed/live_stream?channel=UCNye-wNBqNL5ZzHSJj3l8Bg&autoplay=1",
-    logo: "https://via.placeholder.com/100x50",
-  },
-  {
-    id: "africanews",
-    name: "Africanews English",
-    category: "News",
-    embedUrl: "https://www.youtube.com/embed/NQjabLGdP5g",
-    logo: "https://via.placeholder.com/100x50",
-  },
-  {
-    id: "channels-tv",
-    name: "Channels Television",
-    category: "News",
-    embedUrl: "https://www.youtube.com/embed/W8nThq62Vb4",
-    logo: "https://via.placeholder.com/100x50",
-  },
-  {
-    id: "bbc-world",
-    name: "BBC World News",
-    category: "News",
-    embedUrl: "https://www.youtube.com/embed/live_stream?channel=UC16niRr50-MSBwiO3YDb3RA&autoplay=1",
-    logo: "https://via.placeholder.com/100x50",
-  },
-  {
-    id: "france24",
-    name: "France 24 English",
-    category: "News",
-    embedUrl: "https://www.youtube.com/embed/live_stream?channel=UCQfwfsi5VrQ8yKZ-UWmAEFg&autoplay=1",
-    logo: "https://via.placeholder.com/100x50",
-  },
-  {
-    id: "sky-sports",
-    name: "Sky Sports",
-    category: "Sports",
-    embedUrl: "https://www.youtube.com/embed/live_stream?channel=UCNAf1k0yIjyGu3k9BwAg3lg&autoplay=1",
-    logo: "https://via.placeholder.com/100x50",
-  },
-  {
-    id: "espn",
-    name: "ESPN",
-    category: "Sports",
-    embedUrl: "https://www.youtube.com/embed/live_stream?channel=UCiWLfSweyRNmLpgEHekhoAg&autoplay=1",
-    logo: "https://via.placeholder.com/100x50",
-  },
-  {
-    id: "mtv",
-    name: "MTV",
-    category: "Entertainment",
-    embedUrl: "https://www.youtube.com/embed/live_stream?channel=UC6aRTOQrKGYFQcm-AlUGJVQ&autoplay=1",
     logo: "https://via.placeholder.com/100x50",
   },
   {
@@ -128,10 +52,17 @@ const tvChannels: Channel[] = [
     embedUrl: "https://www.youtube.com/embed/live_stream?channel=UCpVm7bg6pXKo1Pr6k5kxG9A&autoplay=1",
     logo: "https://via.placeholder.com/100x50",
   },
+   {
+    id: "bbc-world",
+    name: "BBC World News",
+    category: "News",
+    embedUrl: "https://www.youtube.com/embed/live_stream?channel=UC16niRr50-MSBwiO3YDb3RA&autoplay=1",
+    logo: "https://via.placeholder.com/100x50",
+  },
 ]
 
 // Available categories
-const categories = ["All", "News", "Sports", "Entertainment", "Documentary"]
+const categories = ["All", "News","Documentary"]
 
 export default function TVScreen() {
   const [selectedCategory, setSelectedCategory] = useState("All")
@@ -139,6 +70,14 @@ export default function TVScreen() {
   const [fullscreenChannel, setFullscreenChannel] = useState<Channel | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const fadeAnim = useRef(new Animated.Value(0)).current
+
+  // Track currently playing channel
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null)
+  const [errorChannels, setErrorChannels] = useState<Set<string>>(new Set())
+  const [isLoading, setIsLoading] = useState<string | null>(null)
+
+  // Refs to store WebView references
+  const webViewRefs = useRef<{ [key: string]: WebView | null }>({})
 
   // Handle animation on mount
   useEffect(() => {
@@ -172,16 +111,111 @@ export default function TVScreen() {
     return matchesCategory && matchesSearch
   })
 
+  // Function to stop all channels except the current one
+  const stopAllChannelsExcept = (channelId: string | null) => {
+    Object.keys(webViewRefs.current).forEach((id) => {
+      if (id !== channelId && webViewRefs.current[id]) {
+        try {
+          // Pause the video by injecting JavaScript
+          webViewRefs.current[id]?.injectJavaScript(`
+            try {
+              const videos = document.querySelectorAll('video');
+              if (videos.length > 0) {
+                for (let i = 0; i < videos.length; i++) {
+                  videos[i].pause();
+                  videos[i].currentTime = 0;
+                }
+              }
+              
+              const iframes = document.querySelectorAll('iframe');
+              if (iframes.length > 0) {
+                for (let i = 0; i < iframes.length; i++) {
+                  iframes[i].src = iframes[i].src.replace('autoplay=1', 'autoplay=0');
+                }
+              }
+              
+              true;
+            } catch(e) {
+              console.error('Error stopping video:', e);
+              true;
+            }
+          `)
+        } catch (error) {
+          console.error(`Error stopping channel ${id}:`, error)
+        }
+      }
+    })
+  }
+
+  // Handle playing a channel
+  const playChannel = (channelId: string) => {
+    // If this channel is already playing, stop it
+    if (currentlyPlaying === channelId) {
+      stopAllChannelsExcept(null)
+      setCurrentlyPlaying(null)
+      return
+    }
+
+    setIsLoading(channelId)
+
+    // Stop all other channels
+    stopAllChannelsExcept(channelId)
+
+    // Set this channel as currently playing
+    setCurrentlyPlaying(channelId)
+    setIsLoading(null)
+
+    // Remove from error list if it was there
+    if (errorChannels.has(channelId)) {
+      const newErrorChannels = new Set(errorChannels)
+      newErrorChannels.delete(channelId)
+      setErrorChannels(newErrorChannels)
+    }
+  }
+
   // Handle entering fullscreen mode
   const handleOpenFullscreen = (channel: Channel) => {
+    // Stop all channels before going fullscreen
+    stopAllChannelsExcept(null)
+
     setFullscreenChannel(channel)
     setIsFullscreen(true)
+
+    // Set the fullscreen channel as currently playing
+    setCurrentlyPlaying(channel.id)
   }
 
   // Handle exiting fullscreen mode
   const handleCloseFullscreen = () => {
     setIsFullscreen(false)
     setFullscreenChannel(null)
+
+    // Stop the fullscreen channel when exiting
+    setCurrentlyPlaying(null)
+  }
+
+  // Handle WebView errors
+  const handleWebViewError = (channelId: string) => {
+    console.error(`Error loading channel ${channelId}`)
+
+    // Add to error channels
+    setErrorChannels(new Set(errorChannels).add(channelId))
+
+    // Clear loading state
+    if (isLoading === channelId) {
+      setIsLoading(null)
+    }
+
+    // Clear currently playing if this was the channel
+    if (currentlyPlaying === channelId) {
+      setCurrentlyPlaying(null)
+    }
+
+    // Show error message
+    const channel = tvChannels.find((c) => c.id === channelId)
+    if (channel) {
+      Alert.alert("Channel Error", `Unable to load ${channel.name}. The channel may be unavailable.`, [{ text: "OK" }])
+    }
   }
 
   // Category filter component
@@ -204,23 +238,36 @@ export default function TVScreen() {
   // TV Card component
   const LiveTvCard = ({ channel }: { channel: Channel }) => {
     const [isMuted, setIsMuted] = useState(true)
-    const webViewRef = useRef<WebView>(null)
+    const isPlaying = currentlyPlaying === channel.id
+    const isChannelLoading = isLoading === channel.id
+    const hasError = errorChannels.has(channel.id)
 
     const toggleMute = () => {
+      if (!isPlaying) return
+
       setIsMuted(!isMuted)
 
       // Try to mute/unmute the WebView content
-      if (webViewRef.current) {
+      if (webViewRefs.current[channel.id]) {
         const script = isMuted
-          ? 'document.querySelector("video").muted = false;'
-          : 'document.querySelector("video").muted = true;'
+          ? 'try { document.querySelector("video").muted = false; true; } catch(e) { true; }'
+          : 'try { document.querySelector("video").muted = true; true; } catch(e) { true; }'
 
-        webViewRef.current.injectJavaScript(script)
+        webViewRefs.current[channel.id]?.injectJavaScript(script)
       }
     }
 
+    // Modify URL to include autoplay parameter only if this channel is currently playing
+    const getChannelUrl = () => {
+      const baseUrl = channel.embedUrl
+      const separator = baseUrl.includes("?") ? "&" : "?"
+      const autoplayParam = isPlaying ? "autoplay=1" : "autoplay=0"
+      const muteParam = isMuted ? "mute=1" : "mute=0"
+      return `${baseUrl}${separator}${autoplayParam}&${muteParam}`
+    }
+
     return (
-      <View style={styles.cardContainer}>
+      <View style={[styles.cardContainer, hasError && styles.errorCard]}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>{channel.name}</Text>
           <View style={styles.categoryBadge}>
@@ -229,18 +276,33 @@ export default function TVScreen() {
         </View>
 
         <View style={styles.playerContainer}>
-          <WebView
-            ref={webViewRef}
-            source={{ uri: `${channel.embedUrl}${channel.embedUrl.includes("?") ? "&" : "?"}mute=1` }}
-            style={styles.webview}
-            javaScriptEnabled
-            domStorageEnabled
-            mediaPlaybackRequiresUserAction={false}
-          />
+          {isPlaying && (
+            <WebView
+              ref={(ref) => (webViewRefs.current[channel.id] = ref)}
+              source={{ uri: getChannelUrl() }}
+              style={styles.webview}
+              javaScriptEnabled
+              domStorageEnabled
+              mediaPlaybackRequiresUserAction={false}
+              onError={() => handleWebViewError(channel.id)}
+              onHttpError={() => handleWebViewError(channel.id)}
+            />
+          )}
+
+          {!isPlaying && (
+            <View style={styles.inactivePlayer}>
+              <Feather name="tv" size={32} color="#FFD700" />
+              <Text style={styles.inactiveText}>Click Play to watch</Text>
+            </View>
+          )}
 
           {/* Controls overlay */}
           <View style={styles.controlsOverlay}>
-            <TouchableOpacity style={styles.controlButton} onPress={toggleMute}>
+            <TouchableOpacity
+              style={[styles.controlButton, !isPlaying && styles.disabledButton]}
+              onPress={toggleMute}
+              disabled={!isPlaying}
+            >
               <Feather name={isMuted ? "volume-x" : "volume-2"} size={16} color="white" />
             </TouchableOpacity>
 
@@ -250,8 +312,21 @@ export default function TVScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.fullscreenButton} onPress={() => handleOpenFullscreen(channel)}>
-          <Text style={styles.fullscreenButtonText}>Watch Full Screen</Text>
+        <TouchableOpacity
+          style={[
+            styles.playButton,
+            isPlaying && styles.pauseButton,
+            hasError && styles.retryButton,
+            isChannelLoading && styles.loadingButton,
+          ]}
+          onPress={() => playChannel(channel.id)}
+          disabled={isChannelLoading}
+        >
+          {isChannelLoading ? (
+            <Text style={styles.buttonText}>Loading...</Text>
+          ) : (
+            <Text style={styles.buttonText}>{hasError ? "Retry" : isPlaying ? "Stop" : "Play"}</Text>
+          )}
         </TouchableOpacity>
       </View>
     )
@@ -322,6 +397,10 @@ export default function TVScreen() {
               javaScriptEnabled
               domStorageEnabled
               mediaPlaybackRequiresUserAction={false}
+              onError={() => {
+                handleWebViewError(fullscreenChannel.id)
+                handleCloseFullscreen()
+              }}
             />
           )}
 
@@ -343,8 +422,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#8B0000",
-    paddingTop:20
-
+    paddingTop: 20,
   },
   backgroundGradient: {
     position: "absolute",
@@ -437,6 +515,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 16,
   },
+  errorCard: {
+    backgroundColor: "rgba(255, 200, 200, 0.2)",
+  },
   cardHeader: {
     padding: 16,
     flexDirection: "row",
@@ -462,10 +543,22 @@ const styles = StyleSheet.create({
   playerContainer: {
     height: 180,
     position: "relative",
+    backgroundColor: "#000",
   },
   webview: {
     flex: 1,
     backgroundColor: "black",
+  },
+  inactivePlayer: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inactiveText: {
+    color: "#FFD700",
+    marginTop: 8,
+    fontSize: 14,
   },
   controlsOverlay: {
     position: "absolute",
@@ -485,13 +578,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  fullscreenButton: {
+  disabledButton: {
+    opacity: 0.5,
+  },
+  playButton: {
     margin: 16,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 24,
     backgroundColor: "#FFD700",
     alignItems: "center",
+  },
+  pauseButton: {
+    backgroundColor: "#FF9900",
+  },
+  retryButton: {
+    backgroundColor: "#FF6666",
+  },
+  loadingButton: {
+    backgroundColor: "#CCCCCC",
+  },
+  buttonText: {
+    color: "#8B0000",
+    fontWeight: "bold",
+    fontSize: 16,
   },
   fullscreenButtonText: {
     color: "#8B0000",

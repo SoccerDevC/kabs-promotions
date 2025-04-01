@@ -1,15 +1,16 @@
-import AsyncStorage from "@react-native-async-storage/async-storage"
-import { createClient } from "@supabase/supabase-js"
+import { Platform } from "react-native"
 import "react-native-url-polyfill/auto"
-import * as FileSystem from "expo-file-system"
+import { toByteArray } from "base64-js"
+import AsyncStorage from "@react-native-async-storage/async-storage"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import { AppState } from "react-native"
 
-// Initialize Supabase client with hardcoded URL and key
-// In production, use environment variables instead
-const supabaseUrl = "https://lngppwffukwlgmtkadjm.supabase.co"
-const supabaseKey =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuZ3Bwd2ZmdWt3bGdtdGthZGptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA0NDkzMTIsImV4cCI6MjA1NjAyNTMxMn0.nAn48WYq5aUUJVYexOkPwUvNljjQq_ZRSP4qzaKOedU"
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
+const supabaseUrl = "https://gnnpqsiuppddecqbgrlk.supabase.co"
+const supabaseAnonKey ="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdubnBxc2l1cHBkZGVjcWJncmxrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI1MTA2ODQsImV4cCI6MjA1ODA4NjY4NH0.37iD13ZGc6q3VSTCZCGV8ckzWUqpG16y4yiXuK9JNEk"
+
+// Create a Supabase client with proper React Native configuration
+export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
@@ -18,24 +19,41 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   },
 })
 
-// Helper function to decode base64 for file uploads
-export const decode = (base64: string) => {
-  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+// Tells Supabase Auth to continuously refresh the session automatically
+// if the app is in the foreground
+AppState.addEventListener("change", (state) => {
+  if (state === "active") {
+    supabase.auth.startAutoRefresh()
+  } else {
+    supabase.auth.stopAutoRefresh()
+  }
+})
+
+export const decode = (base64String: string): Uint8Array => {
+  if (Platform.OS === "android" || Platform.OS === "ios") {
+    const bytes = toByteArray(base64String)
+    return bytes
+  } else {
+    const binaryString = atob(base64String)
+    const len = binaryString.length
+    const bytes = new Uint8Array(len)
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    return bytes
+  }
 }
 
-// Function to get a random color for user
-export const getRandomColor = () => {
-  const colors = ["#FFD700", "#FFA500", "#FF69B4", "#00CED1", "#98FB98", "#DDA0DD", "#F0E68C", "#87CEEB"]
-  return colors[Math.floor(Math.random() * colors.length)]
-}
-
-// Initialize a new user
+// Initialize a new user with random color and default settings
 export const initializeNewUser = async () => {
-  const randomId = Math.random().toString(36).substr(2, 6)
+  const guestId = `guest_${Math.random().toString(36).substring(2, 10)}`
+  const userColor = "#" + Math.floor(Math.random() * 16777215).toString(16)
+
   const newUser = {
-    username: "Guest_" + randomId,
-    profilePic: "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y",
-    color: getRandomColor(),
+    username: guestId,
+    profilePic: null,
+    color: userColor,
+    isGuest: true,
   }
 
   // Save to AsyncStorage
@@ -44,40 +62,77 @@ export const initializeNewUser = async () => {
   return newUser
 }
 
-// Upload file to Supabase storage
-export const uploadFile = async (uri: string, type: "image" | "audio" | "file") => {
+// Define types for database tables
+export interface Message {
+  id: string
+  content: string
+  user_id: string
+  profile_pic?: string
+  user_color?: string
+  type: "text" | "image" | "audio" | "file"
+  created_at: string
+  reply_to?: {
+    id: string
+    user_id: string
+    content: string
+    type?: string
+  } | null
+}
+
+export interface UserProfile {
+  username: string
+  email?: string
+  profile_pic?: string | null
+  color: string
+  is_guest: boolean
+}
+
+// Check if Supabase connection is working
+export const checkSupabaseConnection = async (): Promise<boolean> => {
   try {
-    // Get file info from FileSystem
-    const fileInfo = await FileSystem.getInfoAsync(uri)
-    if (!fileInfo.exists) {
-      throw new Error("File does not exist")
-    }
+    // Use the ping function we created
+    const { data, error } = await supabase.rpc("ping")
 
-    // Create file name
-    const fileExt = uri.split(".").pop()
-    const fileName = `${Date.now()}.${fileExt}`
-    const filePath = `${type === "image" ? "images" : type === "audio" ? "audio" : "files"}/${fileName}`
-
-    // Read file as base64
-    const fileBase64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    })
-
-    // Upload to Supabase Storage
-    const { data, error } = await supabase.storage.from("chat-files").upload(filePath, decode(fileBase64), {
-      contentType: type === "image" ? "image/jpeg" : type === "audio" ? "audio/mpeg" : "application/octet-stream",
-    })
-
-    if (error) throw error
-
-    // Return public URL
-    return `${supabaseUrl}/storage/v1/object/public/chat-files/${filePath}`
+    // If there's no error, connection is working
+    return !error && data === "pong"
   } catch (error) {
-    console.error("Error uploading file:", error)
-    throw error
+    console.error("Supabase connection check failed:", error)
+    return false
   }
 }
 
-// Add a default export to satisfy Expo Router
-export default { supabase, decode, getRandomColor, initializeNewUser, uploadFile }
+// Ensure user exists in the database
+export const ensureUserExists = async (user: {
+  username: string
+  profilePic: string | null
+  color: string
+  isGuest: boolean
+}): Promise<boolean> => {
+  try {
+    // Check if user exists
+    const { data, error } = await supabase.from("users").select("username").eq("username", user.username).single()
+
+    if (error || !data) {
+      // User doesn't exist, create them
+      const { error: insertError } = await supabase.from("users").insert([
+        {
+          username: user.username,
+          profile_pic: user.profilePic,
+          color: user.color,
+          is_guest: user.isGuest,
+        },
+      ])
+
+      if (insertError) {
+        console.error("Error creating user:", insertError)
+        return false
+      }
+    }
+
+    return true
+  } catch (error) {
+    console.error("Error ensuring user exists:", error)
+    return false
+  }
+}
 
