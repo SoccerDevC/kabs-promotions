@@ -24,7 +24,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage"
 import * as ImagePicker from "expo-image-picker"
 import * as FileSystem from "expo-file-system"
 import { Audio } from "expo-av"
-import { supabase, decode, checkSupabaseConnection, ensureUserExists, type Message } from "../utils/supabase"
+import { supabase, decode, checkSupabaseConnection, ensureUserExists, type Message } from "@/utils/supabase"
 import NetInfo from "@react-native-community/netinfo"
 
 // Define types for our data
