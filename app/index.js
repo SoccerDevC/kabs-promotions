@@ -4,7 +4,8 @@ import {
   Text, 
   StyleSheet, 
   Animated, 
-  Dimensions 
+  Dimensions,
+  ImageBackground 
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Speech from 'expo-speech';
@@ -70,105 +71,114 @@ const WelcomeScreen = () => {
   }, []);
 
   return (
-    <LinearGradient
-      colors={['#8B0000', '#800080', '#4B0082']}
-      style={styles.container}
+    <ImageBackground 
+      source={require('../assets/images/animate.webp')}
+      style={styles.backgroundImage}
+      resizeMode="cover"
     >
-      <Animated.View 
-        style={[
-          styles.contentContainer,
-          {
-            opacity: fadeAnim,
-            transform: [
-              { translateY: slideAnim },
-              { scale: scaleAnim }
-            ]
-          }
-        ]}
-      >
-        <Text style={styles.welcomeText}>Welcome to</Text>
-        <Text style={styles.brandText}>Kabs Promotions</Text>
-        
-        <View style={styles.emojiContainer}>
-          {/* Music emoji */}
-          <Animated.Text 
-            style={[
-              styles.emoji,
-              {
-                transform: [
-                  { 
-                    translateY: fadeAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [20, 0]
-                    }) 
-                  }
-                ]
-              }
-            ]}
-          >
-            🎵
-          </Animated.Text>
-          
-          {/* Radio emoji */}
-          <Animated.Text 
-            style={[
-              styles.emoji,
-              {
-                transform: [
-                  { 
-                    translateY: fadeAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [-20, 0]
-                    }) 
-                  }
-                ]
-              }
-            ]}
-          >
-            📻
-          </Animated.Text>
-          
-          {/* TV emoji */}
-          <Animated.Text 
-            style={[
-              styles.emoji,
-              {
-                transform: [
-                  { 
-                    translateY: fadeAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [20, 0]
-                    }) 
-                  }
-                ]
-              }
-            ]}
-          >
-            📺
-          </Animated.Text>
-        </View>
-        
-        <Animated.Text 
+      <View style={styles.overlay}>
+        <Animated.View 
           style={[
-            styles.enjoyText,
+            styles.contentContainer,
             {
-              opacity: fadeAnim.interpolate({
-                inputRange: [0, 0.7, 1],
-                outputRange: [0, 0, 1]
-              })
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ]
             }
           ]}
         >
-          Enjoy your {timeOfDay} with us
-        </Animated.Text>
-      </Animated.View>
-    </LinearGradient>
+          <Text style={styles.welcomeText}>Welcome to</Text>
+          <Text style={styles.brandText}>Kabs Promotions</Text>
+          
+          <View style={styles.emojiContainer}>
+            {/* Music emoji */}
+            <Animated.Text 
+              style={[
+                styles.emoji,
+                {
+                  transform: [
+                    { 
+                      translateY: fadeAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0]
+                      }) 
+                    }
+                  ]
+                }
+              ]}
+            >
+              🎵
+            </Animated.Text>
+            
+            {/* Radio emoji */}
+            <Animated.Text 
+              style={[
+                styles.emoji,
+                {
+                  transform: [
+                    { 
+                      translateY: fadeAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-20, 0]
+                      }) 
+                    }
+                  ]
+                }
+              ]}
+            >
+              📻
+            </Animated.Text>
+            
+            {/* TV emoji */}
+            <Animated.Text 
+              style={[
+                styles.emoji,
+                {
+                  transform: [
+                    { 
+                      translateY: fadeAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0]
+                      }) 
+                    }
+                  ]
+                }
+              ]}
+            >
+              📺
+            </Animated.Text>
+          </View>
+          
+          <Animated.Text 
+            style={[
+              styles.enjoyText,
+              {
+                opacity: fadeAnim.interpolate({
+                  inputRange: [0, 0.7, 1],
+                  outputRange: [0, 0, 1]
+                })
+              }
+            ]}
+          >
+            Enjoy your {timeOfDay} with us
+          </Animated.Text>
+        </Animated.View>
+      </View>
+    </ImageBackground>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  backgroundImage: {
     flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(139, 0, 0, 0.5)', // Semi-transparent overlay to maintain brand colors
     justifyContent: 'center',
     alignItems: 'center',
   },
